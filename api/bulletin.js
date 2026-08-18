@@ -1,10 +1,6 @@
 const { fetchBulletin } = require('../lib/nesine');
 
-const VERIFIED_FALLBACK_MTIDS = new Set([
-  1,3,5,7,8,9,11,12,13,14,15,20,29,38,43,48,49,100,101,155,161,164,
-  185,216,272,291,299,301,338,342,343,414,416,418,424,426,438,446,450,
-  452,459,461,583,601,602,656,801,822,823,824,866,867,884,887
-]);
+const CORE_FOOTBALL_FALLBACK = new Set([1,3,5,11,12,13,14,38,43,49,100,101]);
 
 function istanbulDate(ts){
   if(!ts) return null;
@@ -13,19 +9,16 @@ function istanbulDate(ts){
 
 function verifyMarketLabels(matches){
   for(const match of matches||[]){
+    if(Number(match?.sportType)!==1) continue;
     const verifiedMarkets=[];
     for(const market of match.markets||[]){
       const mtid=Number(market?.typeId||0);
       const verifiedOutcomes=[];
       for(const outcome of market.outcomes||[]){
-        // User-verified current Nesine display: MTID 599 fallback order is Evet / Hayır.
-        // Explicit source text always has priority over every fallback mapping.
-        if(mtid===599 && !outcome.sourceLabel){
-          if(Number(outcome.n)===1) outcome.label='Evet';
-          else if(Number(outcome.n)===2) outcome.label='Hayır';
-        }
-        outcome.labelVerified = Boolean(outcome.sourceLabel) || VERIFIED_FALLBACK_MTIDS.has(mtid) || mtid===599;
-        outcome.labelSource = outcome.sourceLabel ? 'nesine-source' : (outcome.labelVerified ? 'verified-fallback' : 'unverified-fallback');
+        const fromNesine=Boolean(outcome?.sourceLabel);
+        const coreFallback=CORE_FOOTBALL_FALLBACK.has(mtid);
+        outcome.labelVerified=fromNesine||coreFallback;
+        outcome.labelSource=fromNesine?'nesine-source':(coreFallback?'core-fallback':'unverified-fallback');
         if(outcome.labelVerified) verifiedOutcomes.push(outcome);
       }
       if(verifiedOutcomes.length){
