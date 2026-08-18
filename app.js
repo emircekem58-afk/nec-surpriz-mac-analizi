@@ -8,7 +8,7 @@ function fmtDate(s){try{return new Intl.DateTimeFormat('tr-TR',{timeZone:'Europe
 function technicalText(v){return /^(market|bahis|seçenek|secenek|option|outcome|selection)\s*[#:_-]?\s*\d+\b/i.test(String(v||'').trim())}
 function flatOdds(m){const o=[];for(const mk of m.markets||[]){if(mk.known===false||technicalText(mk.name))continue;for(const x of mk.outcomes||[])if(Number(x.odds)>1&&!technicalText(x.label))o.push({name:mk.name,label:x.label,odds:Number(x.odds),kind:mk.kind})}return o}
 function previewOdds(m){const all=flatOdds(m);const main=all.filter(x=>/maç sonucu|1x2|maç kazananı/i.test(x.name)).slice(0,3);return main.length?main:all.slice(0,3)}
-function quickRadar(m){const all=flatOdds(m);const med=all.some(x=>x.odds>=2.5&&x.odds<5);const high=all.some(x=>x.odds>=5&&x.odds<10);const special=all.some(x=>/oyuncu|şut|isabet|korner|kart|ace|servis|set|oyun|ilk yarı|devre/i.test(x.name));return Math.min(72,Math.round(24+(med?12:0)+(high?13:0)+(special?8:0)+Math.min(15,(m.markets||[]).length/4)))}
+function quickRadar(m){const all=flatOdds(m);const medium=all.some(x=>x.odds>=2.5&&x.odds<5),high=all.some(x=>x.odds>=5&&x.odds<12),special=all.some(x=>/ilk yarı|devre|gol|korner|kart|set|oyun/i.test(x.name));return Math.min(70,Math.round(22+(medium?13:0)+(high?14:0)+(special?9:0)+Math.min(12,(m.markets||[]).length/5)))}
 function analysisKey(m){const odds=(m.markets||[]).flatMap(mk=>(mk.outcomes||[]).map(o=>`${mk.id??mk.typeId}:${o.n}:${o.odds}`)).join('|');return `${m.id}|${odds}`}
 function bulletinSignature(matches){return matches.map(m=>analysisKey(m)).join('||')}
 function metric(label,value,cls=''){return `<span class="metric ${cls}"><small>${escapeHtml(label)}</small><b>${escapeHtml(value)}</b></span>`}
@@ -16,21 +16,71 @@ async function load(){
  state.loading=true;renderList();
  try{
   const q=new URLSearchParams({sport:String(state.sport),date:state.date});if(state.search)q.set('search',state.search);
-  const r=await fetch('/api/bulletin?'+q,{cache:'no-store'});const j=await r.json();if(!r.ok)throw new Error(j.error||'Bülten alınamadı');
-  const next=(j.matches||[]).sort((a,b)=>(a.startTimestamp||9e15)-(b.startTimestamp||9e15));
-  const sig=bulletinSignature(next);if(sig!==state.bulletinSignature){state.analyses.clear();state.bulletinSignature=sig}
+  const r=await fetch('/api/bulletin?'+q,{cache:'no-store'}),j=await r.json();if(!r.ok)throw new Error(j.error||'Bülten alınamadı');
+  const next=(j.matches||[]).sort((a,b)=>(a.startTimestamp||9e15)-(b.startTimestamp||9e15)),sig=bulletinSignature(next);
+  if(sig!==state.bulletinSignature){state.analyses.clear();state.bulletinSignature=sig}
   state.matches=next;state.source=j.source;state.fetchedAt=j.fetchedAt;document.querySelector('#err').innerHTML='';
- }
- catch(e){state.matches=[];state.analyses.clear();state.bulletinSignature='';document.querySelector('#err').innerHTML=`<div class="error"><b>${escapeHtml(e.message)}</b><br>Sahte maç/oran gösterilmiyor. Veri kaynağı erişilemiyor.</div>`}
+ }catch(e){state.matches=[];state.analyses.clear();state.bulletinSignature='';document.querySelector('#err').innerHTML=`<div class="error"><b>${escapeHtml(e.message)}</b><br>Sahte maç veya oran gösterilmiyor.</div>`}
  finally{state.loading=false;renderAll()}
 }
 function renderAll(){renderToolbar();renderStatus();renderRadar();renderList()}
-function renderToolbar(){document.querySelectorAll('[data-sport]').forEach(b=>b.classList.toggle('active',Number(b.dataset.sport)===state.sport));document.querySelectorAll('[data-date]').forEach(b=>b.classList.toggle('active',b.dataset.date===state.date));document.querySelector('#customDate').value=state.date;}
-function renderStatus(){document.querySelector('#status').innerHTML=state.fetchedAt?`<b>● CANLI BÜLTEN</b><br>${escapeHtml(state.source)} · ${timeTR(Date.parse(state.fetchedAt))} güncellendi`:'Gerçek veri bekleniyor';}
-function renderRadar(){const top=state.matches.map(m=>({m,s:quickRadar(m)})).sort((a,b)=>b.s-a.s).slice(0,3);document.querySelector('#radarGrid').innerHTML=top.length?top.map(({m,s})=>`<div class="radarcard" data-id="${escapeHtml(m.id)}"><small>${escapeHtml(m.league)} · ${timeTR(m.startTimestamp,m.time)}</small><div class="score">${s}</div><b>${escapeHtml(m.home)} — ${escapeHtml(m.away)}</b><small>Bülten ön-radarı · detayda NEÇ/AV doğrulanır</small></div>`).join(''):'<div class="empty">Bu tarih için radar adayı yok.</div>';document.querySelectorAll('.radarcard').forEach(x=>x.onclick=()=>openMatch(x.dataset.id));}
-function renderList(){const box=document.querySelector('#matches');document.querySelector('#count').textContent=`${state.matches.length} karşılaşma`;document.querySelector('#dayTitle').textContent=fmtDate(state.date);if(state.loading){box.innerHTML='<div class="loading">Bülten yükleniyor…</div>';return}if(!state.matches.length){box.innerHTML='<div class="empty">Bu filtrede karşılaşma bulunamadı.</div>';return}box.innerHTML=state.matches.map(m=>{const po=previewOdds(m);return `<div class="match" data-id="${escapeHtml(m.id)}"><div><div class="time">${timeTR(m.startTimestamp,m.time)}</div><div class="sports">${escapeHtml(m.sport)}</div></div><div><div class="league">${escapeHtml(m.league)} · ${m.marketCount} çözümlenmiş market</div><div class="teams">${escapeHtml(m.home)} — ${escapeHtml(m.away)}</div></div><div class="oddbox">${po.map(o=>`<span class="odd">${escapeHtml(o.label)} <b>${Number(o.odds).toFixed(2)}</b></span>`).join('')}</div></div>`}).join('');document.querySelectorAll('.match').forEach(x=>x.onclick=()=>openMatch(x.dataset.id));}
-async function openMatch(id){const m=state.matches.find(x=>x.id===id);if(!m)return;const back=document.querySelector('#modalBack');const body=document.querySelector('#modalBody');back.classList.add('show');body.innerHTML=`<div class="modaltop"><div><div class="meta">${escapeHtml(m.league)} · ${timeTR(m.startTimestamp,m.time)}</div><h2>${escapeHtml(m.home)} — ${escapeHtml(m.away)}</h2></div><button class="close" id="closeModal">×</button></div><div class="loading">NEÇ analiz hazırlanıyor…</div>`;document.querySelector('#closeModal').onclick=closeModal;
- try{const key=analysisKey(m);let a=state.analyses.get(key);if(!a){const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(m),cache:'no-store'});a=await r.json();if(!r.ok)throw new Error(a.error||'Analiz alınamadı');state.analyses.set(key,a)}renderAnalysis(m,a)}catch(e){body.innerHTML+=`<div class="error">${escapeHtml(e.message)}</div>`}}
-function renderAnalysis(m,a){const body=document.querySelector('#modalBody');const picks=Array.isArray(a.picks)?a.picks:[];const insights=Array.isArray(a.insights)?a.insights:[];body.innerHTML=`<div class="modaltop"><div><div class="meta">${escapeHtml(m.league)} · ${timeTR(m.startTimestamp,m.time)}</div><h2>${escapeHtml(m.home)} — ${escapeHtml(m.away)}</h2></div><button class="close" id="closeModal">×</button></div><div class="scoreline"><span class="pill lime">NEÇ RADAR ${Number(a.radar||0)}/99</span><span class="pill">${m.marketCount} çözümlenmiş market</span>${a.form?'<span class="pill">Bağımsız form verisi var</span>':'<span class="pill">Bağımsız form verisi yok</span>'}</div><div class="picks">${picks.map(p=>`<div class="pick ${p.available?'':'na'} ${p.recommended?'recommended':''}"><div class="tag">${escapeHtml(p.tag)}</div><h3>${escapeHtml(p.label)}${p.recommended?' · POZİTİF AV':''}</h3>${p.available?`<div class="sel"><span>${escapeHtml(p.market)} · ${escapeHtml(p.selection)}</span><span class="oddnum">${Number(p.odds).toFixed(2)}</span></div><div class="metrics">${metric('Ham Olasılık',`%${Number(p.implied).toFixed(1)}`)}${metric('Piyasa',`%${Number(p.fair).toFixed(1)}`)}${p.model===null?metric('NEÇ / AV','Veri yetersiz','muted'):metric('NEÇ Olasılığı',`%${Number(p.model).toFixed(1)}`,'lime')+metric('Veri Güveni',`%${Number(p.confidencePct||0).toFixed(0)}`,'confidence')+metric('AV',`${Number(p.av)>=0?'+':''}${Number(p.av).toFixed(1)} puan`,Number(p.av)>0?'positive':'negative')}${p.ev===null?'':metric('EV',`${Number(p.ev)>=0?'+':''}${Number(p.ev).toFixed(1)}%`,Number(p.ev)>0?'positive':'negative')}</div><div class="reason">${escapeHtml(p.reason)}</div>`:`<div class="reason">${escapeHtml(p.reason)}</div>`}</div>`).join('')}</div><div class="insights">${insights.map(i=>`<div class="insight"><b>${escapeHtml(i.title)}</b><p>${escapeHtml(i.text)}</p></div>`).join('')}</div><div class="warn">${escapeHtml(a.disclaimer||'')}</div>`;document.querySelector('#closeModal').onclick=closeModal;}
+function renderToolbar(){document.querySelectorAll('[data-sport]').forEach(b=>b.classList.toggle('active',Number(b.dataset.sport)===state.sport));document.querySelectorAll('[data-date]').forEach(b=>b.classList.toggle('active',b.dataset.date===state.date));document.querySelector('#customDate').value=state.date}
+function renderStatus(){document.querySelector('#status').innerHTML=state.fetchedAt?`<b>● CANLI BÜLTEN</b><br>${escapeHtml(state.source)} · ${timeTR(Date.parse(state.fetchedAt))} güncellendi`:'Gerçek veri bekleniyor'}
+function renderRadar(){
+ const top=state.matches.map(m=>({m,s:quickRadar(m)})).sort((a,b)=>b.s-a.s).slice(0,3);
+ document.querySelector('#radarGrid').innerHTML=top.length?top.map(({m,s})=>`<div class="radarcard" data-id="${escapeHtml(m.id)}"><small>${escapeHtml(m.league)} · ${timeTR(m.startTimestamp,m.time)}</small><div class="score">${s}</div><b>${escapeHtml(m.home)} — ${escapeHtml(m.away)}</b><small>Detayda tek senaryo + NEÇ Özel</small></div>`).join(''):'<div class="empty">Bu tarih için radar adayı yok.</div>';
+ document.querySelectorAll('.radarcard').forEach(x=>x.onclick=()=>openMatch(x.dataset.id));
+}
+function renderList(){
+ const box=document.querySelector('#matches');document.querySelector('#count').textContent=`${state.matches.length} karşılaşma`;document.querySelector('#dayTitle').textContent=fmtDate(state.date);
+ if(state.loading){box.innerHTML='<div class="loading">Bülten yükleniyor…</div>';return}
+ if(!state.matches.length){box.innerHTML='<div class="empty">Bu filtrede karşılaşma bulunamadı.</div>';return}
+ box.innerHTML=state.matches.map(m=>{const po=previewOdds(m);return `<div class="match" data-id="${escapeHtml(m.id)}"><div><div class="time">${timeTR(m.startTimestamp,m.time)}</div><div class="sports">${escapeHtml(m.sport)}</div></div><div><div class="league">${escapeHtml(m.league)} · ${m.marketCount} market</div><div class="teams">${escapeHtml(m.home)} — ${escapeHtml(m.away)}</div></div><div class="oddbox">${po.map(o=>`<span class="odd">${escapeHtml(o.label)} <b>${Number(o.odds).toFixed(2)}</b></span>`).join('')}</div></div>`}).join('');
+ document.querySelectorAll('.match').forEach(x=>x.onclick=()=>openMatch(x.dataset.id));
+}
+async function openMatch(id){
+ const m=state.matches.find(x=>x.id===id);if(!m)return;
+ const back=document.querySelector('#modalBack'),body=document.querySelector('#modalBody');back.classList.add('show');
+ body.innerHTML=`<div class="modaltop"><div><div class="meta">${escapeHtml(m.league)} · ${timeTR(m.startTimestamp,m.time)}</div><h2>${escapeHtml(m.home)} — ${escapeHtml(m.away)}</h2></div><button class="close" id="closeModal">×</button></div><div class="loading">NEÇ maç hikâyesi hazırlanıyor…</div>`;
+ document.querySelector('#closeModal').onclick=closeModal;
+ try{
+  const key=analysisKey(m);let a=state.analyses.get(key);
+  if(!a){const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(m),cache:'no-store'});a=await r.json();if(!r.ok)throw new Error(a.error||'Analiz alınamadı');state.analyses.set(key,a)}
+  renderAnalysis(m,a);
+ }catch(e){body.innerHTML+=`<div class="error">${escapeHtml(e.message)}</div>`}
+}
+function renderAnalysis(m,a){
+ const body=document.querySelector('#modalBody'),picks=Array.isArray(a.picks)?a.picks:[],s=a.scenario||{};
+ const special=picks.find(p=>p.label==='NEÇ Özel'&&p.available);
+ body.innerHTML=`<div class="modaltop"><div><div class="meta">${escapeHtml(m.league)} · ${timeTR(m.startTimestamp,m.time)}</div><h2>${escapeHtml(m.home)} — ${escapeHtml(m.away)}</h2></div><button class="close" id="closeModal">×</button></div>
+ <div class="scoreline"><span class="pill lime">NEÇ RADAR ${Number(a.radar||0)}/99</span><span class="pill">Tek senaryo modu</span><span class="pill">Senaryo güveni %${Number(s.confidence||0)}</span></div>
+ <section class="scenario">
+   <div class="scenario-kicker">🧭 NEÇ ANA MAÇ HİKÂYESİ</div>
+   <h3>${escapeHtml(s.title||'Maç senaryosu')}</h3>
+   <p>${escapeHtml(s.summary||'')}</p>
+   <div class="formline"><b>Form:</b> ${escapeHtml(s.formText||'Veri sınırlı')}</div>
+ </section>
+ <section class="nec-special">
+   <div><small>⭐ NEÇ ÖZEL YORUMU</small><p>${escapeHtml(s.specialComment||'')}</p></div>
+   <div class="special-price"><small>NEÇ ÖZEL ORAN</small><b>${special?Number(special.odds).toFixed(2):'—'}</b><span>${special?`${escapeHtml(special.market)} · ${escapeHtml(special.selection)}`:'Uygun market yok'}</span></div>
+ </section>
+ <div class="picks">${picks.map(p=>`<div class="pick ${p.available?'':'na'} ${p.recommended?'recommended':''}">
+   <div class="tag">${escapeHtml(p.tag)}</div><h3>${escapeHtml(p.label)}</h3>
+   ${p.available?`<div class="sel"><span>${escapeHtml(p.market)} · ${escapeHtml(p.selection)}</span><span class="oddnum">${Number(p.odds).toFixed(2)}</span></div>
+   <div class="metrics">${metric('NEÇ AV',`${Number(p.av)>=0?'+':''}${Number(p.av||0).toFixed(1)} puan`,Number(p.av)>0?'positive':Number(p.av)<0?'negative':'muted')}${metric('Güven',`%${Number(p.confidencePct||0).toFixed(0)}`,'confidence')}</div>
+   <div class="reason">${escapeHtml(p.reason)}</div>`:`<div class="metrics">${metric('NEÇ AV','0.0 puan','muted')}</div><div class="reason">${escapeHtml(p.reason)}</div>`}
+ </div>`).join('')}</div>
+ <div class="insights">${(a.insights||[]).map(i=>`<div class="insight"><b>${escapeHtml(i.title)}</b><p>${escapeHtml(i.text)}</p></div>`).join('')}</div>
+ <div class="warn">${escapeHtml(a.disclaimer||'')}</div>`;
+ document.querySelector('#closeModal').onclick=closeModal;
+}
 function closeModal(){document.querySelector('#modalBack').classList.remove('show')}
-document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-sport]').forEach(b=>b.onclick=()=>{state.sport=Number(b.dataset.sport);load()});document.querySelector('#todayBtn').dataset.date=todayTR();document.querySelector('#tomorrowBtn').dataset.date=tomorrowTR();document.querySelectorAll('[data-date]').forEach(b=>b.onclick=()=>{state.date=b.dataset.date;load()});document.querySelector('#customDate').onchange=e=>{state.date=e.target.value;load()};let t;document.querySelector('#search').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{state.search=e.target.value;load()},350)};document.querySelector('#modalBack').onclick=e=>{if(e.target.id==='modalBack')closeModal()};load();setInterval(()=>{const d=todayTR();if(state.date===state._lastToday&&d!==state._lastToday)state.date=d;state._lastToday=d;load()},120000);state._lastToday=todayTR()});
+document.addEventListener('DOMContentLoaded',()=>{
+ document.querySelectorAll('[data-sport]').forEach(b=>b.onclick=()=>{state.sport=Number(b.dataset.sport);load()});
+ document.querySelector('#todayBtn').dataset.date=todayTR();document.querySelector('#tomorrowBtn').dataset.date=tomorrowTR();
+ document.querySelectorAll('[data-date]').forEach(b=>b.onclick=()=>{state.date=b.dataset.date;load()});
+ document.querySelector('#customDate').onchange=e=>{state.date=e.target.value;load()};
+ let t;document.querySelector('#search').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{state.search=e.target.value;load()},350)};
+ document.querySelector('#modalBack').onclick=e=>{if(e.target.id==='modalBack')closeModal()};
+ load();setInterval(load,120000);
+});
