@@ -12,6 +12,21 @@ function quickRadar(m){const all=flatOdds(m);const medium=all.some(x=>x.odds>=2.
 function analysisKey(m){const odds=(m.markets||[]).flatMap(mk=>(mk.outcomes||[]).map(o=>`${mk.id??mk.typeId}:${o.n}:${o.odds}`)).join('|');return `${m.id}|${odds}`}
 function bulletinSignature(matches){return matches.map(m=>analysisKey(m)).join('||')}
 function metric(label,value,cls=''){return `<span class="metric ${cls}"><small>${escapeHtml(label)}</small><b>${escapeHtml(value)}</b></span>`}
+function clientFallback(m,message){
+ const all=flatOdds(m),main=all.filter(x=>/maç sonucu|1x2|maç kazananı/i.test(x.name)).sort((a,b)=>a.odds-b.odds)[0]||all.sort((a,b)=>a.odds-b.odds)[0]||null;
+ const pick=main?{label:'Ana Senaryo',available:true,tag:'GÜVENLİ YEDEK',market:main.name,selection:main.label,odds:main.odds,av:0,confidencePct:12,recommended:false,reason:'Gelişmiş analiz servisi bu istekte cevap vermedi. Yalnızca gerçek bülten oranı gösteriliyor; zıt veya uydurma ek seçim üretilmedi.'}:null;
+ return {radar:10,formStatus:'client-fallback',scenario:{title:'Geçici bülten görünümü',summary:'Analiz servisi geçici olarak yanıt vermedi; maç ekranı kapatılmadı.',formText:'Takım formu yüklenemedi. Veri uydurulmadı.',confidence:12,specialComment:main?`Geçici NEÇ Özel: ${main.name} — ${main.label}, oran ${main.odds.toFixed(2)}. Form teyidi alınamadığı için AV 0.0 tutuldu.`:'Uygun gerçek market çözümlenemedi.',specialOdds:main?.odds??null,specialMarket:main?.name??null,specialSelection:main?.label??null,av:0},picks:pick?[pick,{...pick,label:'NEÇ Özel',tag:'⭐ NEÇ ÖZEL'}]:[],insights:[{title:'⚠️ Analiz Servisi',text:message||'Gelişmiş analiz geçici olarak alınamadı.'},{title:'🧭 Güvenli Mod',text:'Bu durumda yalnızca gerçek bülten verisi gösterilir; çelişkili alternatif tahmin üretilmez.'}],disclaimer:'Bu geçici modda yalnızca gerçek bülten fiyatı gösterilir.'};
+}
+async function requestAnalysis(m){
+ const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),9000);
+ try{
+  const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(m),cache:'no-store',signal:ctrl.signal});
+  const text=await r.text();let a;
+  try{a=JSON.parse(text)}catch{throw new Error(`Analiz servisi geçersiz cevap verdi (${r.status})`)}
+  if(!r.ok)throw new Error(a.error||`Analiz alınamadı (${r.status})`);
+  return a;
+ }finally{clearTimeout(timer)}
+}
 async function load(){
  state.loading=true;renderList();
  try{
@@ -26,61 +41,26 @@ async function load(){
 function renderAll(){renderToolbar();renderStatus();renderRadar();renderList()}
 function renderToolbar(){document.querySelectorAll('[data-sport]').forEach(b=>b.classList.toggle('active',Number(b.dataset.sport)===state.sport));document.querySelectorAll('[data-date]').forEach(b=>b.classList.toggle('active',b.dataset.date===state.date));document.querySelector('#customDate').value=state.date}
 function renderStatus(){document.querySelector('#status').innerHTML=state.fetchedAt?`<b>● CANLI BÜLTEN</b><br>${escapeHtml(state.source)} · ${timeTR(Date.parse(state.fetchedAt))} güncellendi`:'Gerçek veri bekleniyor'}
-function renderRadar(){
- const top=state.matches.map(m=>({m,s:quickRadar(m)})).sort((a,b)=>b.s-a.s).slice(0,3);
- document.querySelector('#radarGrid').innerHTML=top.length?top.map(({m,s})=>`<div class="radarcard" data-id="${escapeHtml(m.id)}"><small>${escapeHtml(m.league)} · ${timeTR(m.startTimestamp,m.time)}</small><div class="score">${s}</div><b>${escapeHtml(m.home)} — ${escapeHtml(m.away)}</b><small>Detayda tek senaryo + NEÇ Özel</small></div>`).join(''):'<div class="empty">Bu tarih için radar adayı yok.</div>';
- document.querySelectorAll('.radarcard').forEach(x=>x.onclick=()=>openMatch(x.dataset.id));
-}
-function renderList(){
- const box=document.querySelector('#matches');document.querySelector('#count').textContent=`${state.matches.length} karşılaşma`;document.querySelector('#dayTitle').textContent=fmtDate(state.date);
- if(state.loading){box.innerHTML='<div class="loading">Bülten yükleniyor…</div>';return}
- if(!state.matches.length){box.innerHTML='<div class="empty">Bu filtrede karşılaşma bulunamadı.</div>';return}
- box.innerHTML=state.matches.map(m=>{const po=previewOdds(m);return `<div class="match" data-id="${escapeHtml(m.id)}"><div><div class="time">${timeTR(m.startTimestamp,m.time)}</div><div class="sports">${escapeHtml(m.sport)}</div></div><div><div class="league">${escapeHtml(m.league)} · ${m.marketCount} market</div><div class="teams">${escapeHtml(m.home)} — ${escapeHtml(m.away)}</div></div><div class="oddbox">${po.map(o=>`<span class="odd">${escapeHtml(o.label)} <b>${Number(o.odds).toFixed(2)}</b></span>`).join('')}</div></div>`}).join('');
- document.querySelectorAll('.match').forEach(x=>x.onclick=()=>openMatch(x.dataset.id));
-}
+function renderRadar(){const top=state.matches.map(m=>({m,s:quickRadar(m)})).sort((a,b)=>b.s-a.s).slice(0,3);document.querySelector('#radarGrid').innerHTML=top.length?top.map(({m,s})=>`<div class="radarcard" data-id="${escapeHtml(m.id)}"><small>${escapeHtml(m.league)} · ${timeTR(m.startTimestamp,m.time)}</small><div class="score">${s}</div><b>${escapeHtml(m.home)} — ${escapeHtml(m.away)}</b><small>Detayda tek senaryo + NEÇ Özel</small></div>`).join(''):'<div class="empty">Bu tarih için radar adayı yok.</div>';document.querySelectorAll('.radarcard').forEach(x=>x.onclick=()=>openMatch(x.dataset.id))}
+function renderList(){const box=document.querySelector('#matches');document.querySelector('#count').textContent=`${state.matches.length} karşılaşma`;document.querySelector('#dayTitle').textContent=fmtDate(state.date);if(state.loading){box.innerHTML='<div class="loading">Bülten yükleniyor…</div>';return}if(!state.matches.length){box.innerHTML='<div class="empty">Bu filtrede karşılaşma bulunamadı.</div>';return}box.innerHTML=state.matches.map(m=>{const po=previewOdds(m);return `<div class="match" data-id="${escapeHtml(m.id)}"><div><div class="time">${timeTR(m.startTimestamp,m.time)}</div><div class="sports">${escapeHtml(m.sport)}</div></div><div><div class="league">${escapeHtml(m.league)} · ${m.marketCount} market</div><div class="teams">${escapeHtml(m.home)} — ${escapeHtml(m.away)}</div></div><div class="oddbox">${po.map(o=>`<span class="odd">${escapeHtml(o.label)} <b>${Number(o.odds).toFixed(2)}</b></span>`).join('')}</div></div>`}).join('');document.querySelectorAll('.match').forEach(x=>x.onclick=()=>openMatch(x.dataset.id))}
 async function openMatch(id){
  const m=state.matches.find(x=>x.id===id);if(!m)return;
  const back=document.querySelector('#modalBack'),body=document.querySelector('#modalBody');back.classList.add('show');
- body.innerHTML=`<div class="modaltop"><div><div class="meta">${escapeHtml(m.league)} · ${timeTR(m.startTimestamp,m.time)}</div><h2>${escapeHtml(m.home)} — ${escapeHtml(m.away)}</h2></div><button class="close" id="closeModal">×</button></div><div class="loading">NEÇ maç hikâyesi hazırlanıyor…</div>`;
- document.querySelector('#closeModal').onclick=closeModal;
- try{
-  const key=analysisKey(m);let a=state.analyses.get(key);
-  if(!a){const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(m),cache:'no-store'});a=await r.json();if(!r.ok)throw new Error(a.error||'Analiz alınamadı');state.analyses.set(key,a)}
-  renderAnalysis(m,a);
- }catch(e){body.innerHTML+=`<div class="error">${escapeHtml(e.message)}</div>`}
+ body.innerHTML=`<div class="modaltop"><div><div class="meta">${escapeHtml(m.league)} · ${timeTR(m.startTimestamp,m.time)}</div><h2>${escapeHtml(m.home)} — ${escapeHtml(m.away)}</h2></div><button class="close" id="closeModal">×</button></div><div class="loading">NEÇ maç hikâyesi hazırlanıyor…</div>`;document.querySelector('#closeModal').onclick=closeModal;
+ const key=analysisKey(m);let a=state.analyses.get(key);
+ if(!a){try{a=await requestAnalysis(m)}catch(e){a=clientFallback(m,e.name==='AbortError'?'Analiz servisi zaman aşımına uğradı.':e.message)}state.analyses.set(key,a)}
+ renderAnalysis(m,a);
 }
 function renderAnalysis(m,a){
- const body=document.querySelector('#modalBody'),picks=Array.isArray(a.picks)?a.picks:[],s=a.scenario||{};
- const special=picks.find(p=>p.label==='NEÇ Özel'&&p.available);
+ const body=document.querySelector('#modalBody'),picks=Array.isArray(a.picks)?a.picks:[],s=a.scenario||{};const special=picks.find(p=>p.label==='NEÇ Özel'&&p.available);
+ const fallback=a.formStatus==='fallback'||a.formStatus==='client-fallback'||a.degraded;
  body.innerHTML=`<div class="modaltop"><div><div class="meta">${escapeHtml(m.league)} · ${timeTR(m.startTimestamp,m.time)}</div><h2>${escapeHtml(m.home)} — ${escapeHtml(m.away)}</h2></div><button class="close" id="closeModal">×</button></div>
- <div class="scoreline"><span class="pill lime">NEÇ RADAR ${Number(a.radar||0)}/99</span><span class="pill">Tek senaryo modu</span><span class="pill">Senaryo güveni %${Number(s.confidence||0)}</span></div>
- <section class="scenario">
-   <div class="scenario-kicker">🧭 NEÇ ANA MAÇ HİKÂYESİ</div>
-   <h3>${escapeHtml(s.title||'Maç senaryosu')}</h3>
-   <p>${escapeHtml(s.summary||'')}</p>
-   <div class="formline"><b>Form:</b> ${escapeHtml(s.formText||'Veri sınırlı')}</div>
- </section>
- <section class="nec-special">
-   <div><small>⭐ NEÇ ÖZEL YORUMU</small><p>${escapeHtml(s.specialComment||'')}</p></div>
-   <div class="special-price"><small>NEÇ ÖZEL ORAN</small><b>${special?Number(special.odds).toFixed(2):'—'}</b><span>${special?`${escapeHtml(special.market)} · ${escapeHtml(special.selection)}`:'Uygun market yok'}</span></div>
- </section>
- <div class="picks">${picks.map(p=>`<div class="pick ${p.available?'':'na'} ${p.recommended?'recommended':''}">
-   <div class="tag">${escapeHtml(p.tag)}</div><h3>${escapeHtml(p.label)}</h3>
-   ${p.available?`<div class="sel"><span>${escapeHtml(p.market)} · ${escapeHtml(p.selection)}</span><span class="oddnum">${Number(p.odds).toFixed(2)}</span></div>
-   <div class="metrics">${metric('NEÇ AV',`${Number(p.av)>=0?'+':''}${Number(p.av||0).toFixed(1)} puan`,Number(p.av)>0?'positive':Number(p.av)<0?'negative':'muted')}${metric('Güven',`%${Number(p.confidencePct||0).toFixed(0)}`,'confidence')}</div>
-   <div class="reason">${escapeHtml(p.reason)}</div>`:`<div class="metrics">${metric('NEÇ AV','0.0 puan','muted')}</div><div class="reason">${escapeHtml(p.reason)}</div>`}
- </div>`).join('')}</div>
- <div class="insights">${(a.insights||[]).map(i=>`<div class="insight"><b>${escapeHtml(i.title)}</b><p>${escapeHtml(i.text)}</p></div>`).join('')}</div>
- <div class="warn">${escapeHtml(a.disclaimer||'')}</div>`;
+ <div class="scoreline"><span class="pill lime">NEÇ RADAR ${Number(a.radar||0)}/99</span><span class="pill">Tek senaryo modu</span><span class="pill">Senaryo güveni %${Number(s.confidence||0)}</span>${fallback?'<span class="pill fallback">Form yedek modu</span>':''}</div>
+ <section class="scenario"><div class="scenario-kicker">🧭 NEÇ ANA MAÇ HİKÂYESİ</div><h3>${escapeHtml(s.title||'Maç senaryosu')}</h3><p>${escapeHtml(s.summary||'')}</p><div class="formline"><b>Form:</b> ${escapeHtml(s.formText||'Veri sınırlı')}</div></section>
+ <section class="nec-special"><div><small>⭐ NEÇ ÖZEL YORUMU</small><p>${escapeHtml(s.specialComment||'')}</p></div><div class="special-price"><small>NEÇ ÖZEL ORAN</small><b>${special?Number(special.odds).toFixed(2):s.specialOdds?Number(s.specialOdds).toFixed(2):'—'}</b><span>${special?`${escapeHtml(special.market)} · ${escapeHtml(special.selection)}`:s.specialMarket?`${escapeHtml(s.specialMarket)} · ${escapeHtml(s.specialSelection)}`:'Uygun market yok'}</span></div></section>
+ <div class="picks">${picks.map(p=>`<div class="pick ${p.available?'':'na'} ${p.recommended?'recommended':''}"><div class="tag">${escapeHtml(p.tag)}</div><h3>${escapeHtml(p.label)}</h3>${p.available?`<div class="sel"><span>${escapeHtml(p.market)} · ${escapeHtml(p.selection)}</span><span class="oddnum">${Number(p.odds).toFixed(2)}</span></div><div class="metrics">${metric('NEÇ AV',`${Number(p.av)>=0?'+':''}${Number(p.av||0).toFixed(1)} puan`,Number(p.av)>0?'positive':Number(p.av)<0?'negative':'muted')}${metric('Güven',`%${Number(p.confidencePct||0).toFixed(0)}`,'confidence')}</div><div class="reason">${escapeHtml(p.reason)}</div>`:`<div class="metrics">${metric('NEÇ AV','0.0 puan','muted')}</div><div class="reason">${escapeHtml(p.reason)}</div>`}</div>`).join('')}</div>
+ <div class="insights">${(a.insights||[]).map(i=>`<div class="insight"><b>${escapeHtml(i.title)}</b><p>${escapeHtml(i.text)}</p></div>`).join('')}</div>${a.formWarning?`<div class="warn"><b>Veri notu:</b> ${escapeHtml(a.formWarning)}</div>`:''}<div class="warn">${escapeHtml(a.disclaimer||'')}</div>`;
  document.querySelector('#closeModal').onclick=closeModal;
 }
 function closeModal(){document.querySelector('#modalBack').classList.remove('show')}
-document.addEventListener('DOMContentLoaded',()=>{
- document.querySelectorAll('[data-sport]').forEach(b=>b.onclick=()=>{state.sport=Number(b.dataset.sport);load()});
- document.querySelector('#todayBtn').dataset.date=todayTR();document.querySelector('#tomorrowBtn').dataset.date=tomorrowTR();
- document.querySelectorAll('[data-date]').forEach(b=>b.onclick=()=>{state.date=b.dataset.date;load()});
- document.querySelector('#customDate').onchange=e=>{state.date=e.target.value;load()};
- let t;document.querySelector('#search').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{state.search=e.target.value;load()},350)};
- document.querySelector('#modalBack').onclick=e=>{if(e.target.id==='modalBack')closeModal()};
- load();setInterval(load,120000);
-});
+document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-sport]').forEach(b=>b.onclick=()=>{state.sport=Number(b.dataset.sport);load()});document.querySelector('#todayBtn').dataset.date=todayTR();document.querySelector('#tomorrowBtn').dataset.date=tomorrowTR();document.querySelectorAll('[data-date]').forEach(b=>b.onclick=()=>{state.date=b.dataset.date;load()});document.querySelector('#customDate').onchange=e=>{state.date=e.target.value;load()};let t;document.querySelector('#search').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{state.search=e.target.value;load()},350)};document.querySelector('#modalBack').onclick=e=>{if(e.target.id==='modalBack')closeModal()};load();setInterval(load,120000)});
