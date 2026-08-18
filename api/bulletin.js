@@ -13,19 +13,29 @@ function istanbulDate(ts){
 
 function verifyMarketLabels(matches){
   for(const match of matches||[]){
+    const verifiedMarkets=[];
     for(const market of match.markets||[]){
       const mtid=Number(market?.typeId||0);
+      const verifiedOutcomes=[];
       for(const outcome of market.outcomes||[]){
-        // Current Nesine display check showed MTID 599 fallback order was reversed in our map.
-        // If Nesine gives an explicit human-readable source label, that always wins.
+        // User-verified current Nesine display: MTID 599 fallback order is Evet / Hayır.
+        // Explicit source text always has priority over every fallback mapping.
         if(mtid===599 && !outcome.sourceLabel){
           if(Number(outcome.n)===1) outcome.label='Evet';
           else if(Number(outcome.n)===2) outcome.label='Hayır';
         }
         outcome.labelVerified = Boolean(outcome.sourceLabel) || VERIFIED_FALLBACK_MTIDS.has(mtid) || mtid===599;
         outcome.labelSource = outcome.sourceLabel ? 'nesine-source' : (outcome.labelVerified ? 'verified-fallback' : 'unverified-fallback');
+        if(outcome.labelVerified) verifiedOutcomes.push(outcome);
+      }
+      if(verifiedOutcomes.length){
+        market.outcomes=verifiedOutcomes;
+        verifiedMarkets.push(market);
       }
     }
+    match.markets=verifiedMarkets;
+    match.marketCount=verifiedMarkets.length;
+    match.outcomeCount=verifiedMarkets.reduce((n,m)=>n+(m.outcomes?.length||0),0);
   }
   return matches;
 }
