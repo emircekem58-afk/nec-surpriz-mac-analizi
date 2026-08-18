@@ -2,7 +2,7 @@ const state={sport:1,date:todayTR(),search:'',matches:[],source:'',fetchedAt:nul
 function dateTR(d=new Date()){return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Istanbul',year:'numeric',month:'2-digit',day:'2-digit'}).format(d)}
 function todayTR(){return dateTR()}
 function tomorrowTR(){const d=new Date();d.setDate(d.getDate()+1);return dateTR(d)}
-function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[m]))}
+function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function timeTR(ts,fallback=''){if(!ts)return fallback;return new Intl.DateTimeFormat('tr-TR',{timeZone:'Europe/Istanbul',hour:'2-digit',minute:'2-digit'}).format(new Date(ts))}
 function fmtDate(s){try{return new Intl.DateTimeFormat('tr-TR',{timeZone:'Europe/Istanbul',weekday:'long',day:'numeric',month:'long'}).format(new Date(s+'T12:00:00+03:00'))}catch{return s}}
 function technicalText(v){return /^(market|bahis|seçenek|secenek|option|outcome|selection)\s*[#:_-]?\s*\d+\b/i.test(String(v||'').trim())}
