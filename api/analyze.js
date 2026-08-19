@@ -11,28 +11,33 @@ function researchAnalysis(match,research,form){
     label:p.role||'NEÇ Seçimi',available:true,tag:TAGS[p.role]||'NEÇ ARAŞTIRMA',
     market:p.candidate.market,selection:p.candidate.selection,odds:p.candidate.odds,
     av:null,confidencePct:p.confidence,recommended:p.confidence>=58,
-    reason:p.reason,kind:p.candidate.kind,researchBacked:true
+    reason:p.reason,kind:p.candidate.kind,researchBacked:true,lineupVerified:p.lineupVerified===true
   }));
   const special=picks.find(p=>p.label==='NEÇ Özel')||picks[picks.length-1]||null;
   const insights=[];
+  if(research.flashscore?.verified){
+    const stats=(research.flashscore.statsVerified||[]).join(', ');
+    insights.push({title:'⚡ Flashscore Kontrolü',text:`İki takım Flashscore futbol sayfalarıyla eşleştirildi. Kullanılabilir doğrulanmış veri türleri: ${stats||'sonuç/form'}.`});
+  }
   if(research.lineupNote)insights.push({title:'👥 Kadro / Eksikler',text:research.lineupNote});
   if(research.formText)insights.push({title:'📋 Son Form',text:research.formText});
+  for(const note of research.flashscore?.notes||[])insights.push({title:'📊 Flashscore Verisi',text:note});
   for(const note of research.researchNotes||[])insights.push({title:'🔎 Güncel Araştırma',text:note});
   return{
     radar:Math.max(1,Math.min(99,Math.round(research.confidence))),
     form:form||null,formStatus:form?'ok':'research-only',researchMode:true,
-    research:{engine:research.engine,researchedAt:research.researchedAt,sources:research.sources||[]},
+    research:{engine:research.engine,researchedAt:research.researchedAt,sources:research.sources||[],flashscore:research.flashscore||null},
     scenario:{
       title:research.title,summary:research.summary,formText:research.formText,
       confidence:research.confidence,specialComment:special?.reason||research.summary,
       specialOdds:special?.odds??null,specialMarket:special?.market??null,specialSelection:special?.selection??null,av:null
     },
-    picks,insights:insights.slice(0,8),analyzedAt:new Date().toISOString(),
-    disclaimer:'NEÇ seçimleri güncel web araştırması ve Nesine bülteninden gelen doğrulanmış seçim-oran çiftleri üzerinden oluşturulur. Oyuncu bahsi, oyuncunun bu maçta oynama ihtimali güncel kaynaklarla desteklenmeden seçilmez. Tahminler garanti değildir.'
+    picks,insights:insights.slice(0,10),analyzedAt:new Date().toISOString(),
+    disclaimer:'NEÇ seçimleri Flashscore-first güncel web araştırması ve Nesine bülteninden gelen doğrulanmış seçim-oran çiftleri üzerinden oluşturulur. Korner/şut/kart/oyuncu gibi özel marketler ilgili Flashscore verisi doğrulanmadan seçilmez. Oyuncu bahsi için ayrıca kadro/oynama durumu teyidi gerekir. Tahminler garanti değildir.'
   };
 }
 function emergencyAnalysis(match,message){
-  return{radar:0,form:null,scenario:{title:'Araştırma geçici olarak tamamlanamadı',summary:'Bu maçta güvenilir web araştırması tamamlanamadığı için NEÇ seçimi uydurulmadı.',formText:'',confidence:0,specialComment:'',specialOdds:null,specialMarket:null,specialSelection:null,av:null},picks:[],insights:[{title:'⚠️ Araştırma',text:message||'Araştırma servisi geçici olarak yanıt vermedi.'}],analyzedAt:new Date().toISOString(),degraded:true,disclaimer:'Veri yetersizken seçim üretilmez.'};
+  return{radar:0,form:null,scenario:{title:'Araştırma geçici olarak tamamlanamadı',summary:'Bu maçta güvenilir Flashscore/web araştırması tamamlanamadığı için NEÇ seçimi uydurulmadı.',formText:'',confidence:0,specialComment:'',specialOdds:null,specialMarket:null,specialSelection:null,av:null},picks:[],insights:[{title:'⚠️ Araştırma',text:message||'Araştırma servisi geçici olarak yanıt vermedi.'}],analyzedAt:new Date().toISOString(),degraded:true,disclaimer:'Veri yetersizken seçim üretilmez.'};
 }
 module.exports=async function handler(req,res){
   if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
@@ -44,7 +49,7 @@ module.exports=async function handler(req,res){
     if(Number(match.sportType)!==1){const r=analyzeMatch(match,null);return res.status(200).json(r)}
     let form=null,research=null,formError=null;
     const formPromise=(match.home&&match.away)?withTimeout(fetchFootballForm(match.home,match.away),6000).catch(e=>{formError=e?.message||'Form verisi alınamadı';return null}):Promise.resolve(null);
-    const researchPromise=withTimeout(fetchWebResearch(match),28500).catch(()=>null);
+    const researchPromise=withTimeout(fetchWebResearch(match),30500).catch(()=>null);
     [form,research]=await Promise.all([formPromise,researchPromise]);
     if(research){
       const result=researchAnalysis(match,research,form);
@@ -55,7 +60,7 @@ module.exports=async function handler(req,res){
     }
     try{
       const fallback=analyzeMatch(match,form);
-      fallback.formStatus=form?'ok':'fallback';fallback.researchWarning='Web araştırması bu istekte tamamlanamadı; yalnızca takım form modeli kullanıldı.';
+      fallback.formStatus=form?'ok':'fallback';fallback.researchWarning='Flashscore-first web araştırması bu istekte yeterli doğrulamaya ulaşamadı; yalnızca takım form modeli kullanıldı.';
       fallback.fullMarketCount=original.marketCount||original.markets.length;fallback.analysisMarketCount=match.markets.length;
       return res.status(200).json(fallback);
     }catch(e){return res.status(200).json(emergencyAnalysis(original,e?.message||'Analiz tamamlanamadı'))}
