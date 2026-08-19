@@ -1,41 +1,7 @@
 const { fetchBulletin }=require('../lib/nesine');
 const { fetchFlashscoreForm }=require('../lib/flashscore');
-const { analyzeMatch }=require('../lib/analyzer-v2');
+const { analyzeMatch }=require('../lib/analyzer-v3');
 const CORE=new Set([1,3,5,11,12,13,14,38,43,49,100,101]);
 function dateTR(ts){if(!ts)return null;return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Istanbul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(ts))}
-function verify(match){
-  const markets=[];
-  for(const m of match.markets||[]){
-    const outcomes=[];
-    for(const o of m.outcomes||[]){
-      o.labelVerified=Boolean(o.sourceLabel)||(Number(match.sportType)===1&&CORE.has(Number(m.typeId)));
-      if(o.labelVerified&&Number(o.odds)>1)outcomes.push(o);
-    }
-    if(outcomes.length){m.outcomes=outcomes;markets.push(m)}
-  }
-  match.markets=markets;
-  return match;
-}
-module.exports=async function handler(req,res){
-  if(req.method!=='GET')return res.status(405).json({error:'GET only'});
-  res.setHeader('Cache-Control','no-store');
-  try{
-    const q=String(req.query?.search||'').toLocaleLowerCase('tr-TR').trim();
-    const date=String(req.query?.date||'').trim();
-    let matches=(await fetchBulletin()).filter(m=>Number(m.sportType)===1);
-    if(date)matches=matches.filter(m=>dateTR(m.startTimestamp)===date||m.date===date);
-    if(q)matches=matches.filter(m=>`${m.home} ${m.away} ${m.league}`.toLocaleLowerCase('tr-TR').includes(q));
-    matches=matches.slice(0,12);
-    const attempts=[];
-    for(const raw of matches){
-      const match=verify(raw),started=Date.now();
-      const form=await fetchFlashscoreForm(match).catch(()=>null);
-      const a=analyzeMatch(match,form),available=(a.picks||[]).filter(p=>p.available);
-      attempts.push({match:`${match.home} - ${match.away}`,form:form?'flashscore':'market-only',picks:available.length,ms:Date.now()-started});
-      if(available.length){
-        return res.status(200).json({ok:true,match:{id:match.id,home:match.home,away:match.away,league:match.league,date:dateTR(match.startTimestamp)},formMode:form?'flashscore':'market-only',flashscore:form?{eventId:form.eventId,source:form.source,url:form.flashscoreUrl,homePlayed:form.home?.played,awayPlayed:form.away?.played}:null,analysis:{availablePicks:available.length,picks:available.map(p=>({label:p.label,market:p.market,selection:p.selection,odds:p.odds,av:p.av,confidence:p.confidencePct,reason:p.reason})),title:a.scenario?.title},attempts});
-      }
-    }
-    return res.status(200).json({ok:false,error:'Eşleşen maçlarda seçim üretilemedi',attempts,totalMatches:matches.length});
-  }catch(e){console.error('[selftest]',e);return res.status(500).json({ok:false,error:e.message||String(e)})}
-};
+function verify(match){const markets=[];for(const m of match.markets||[]){const outcomes=[];for(const o of m.outcomes||[]){o.labelVerified=Boolean(o.sourceLabel)||(Number(match.sportType)===1&&CORE.has(Number(m.typeId)));if(o.labelVerified&&Number(o.odds)>1)outcomes.push(o)}if(outcomes.length){m.outcomes=outcomes;markets.push(m)}}match.markets=markets;return match}
+module.exports=async function handler(req,res){if(req.method!=='GET')return res.status(405).json({error:'GET only'});res.setHeader('Cache-Control','no-store');try{const q=String(req.query?.search||'').toLocaleLowerCase('tr-TR').trim(),date=String(req.query?.date||'').trim();let matches=(await fetchBulletin()).filter(m=>Number(m.sportType)===1);if(date)matches=matches.filter(m=>dateTR(m.startTimestamp)===date||m.date===date);if(q)matches=matches.filter(m=>`${m.home} ${m.away} ${m.league}`.toLocaleLowerCase('tr-TR').includes(q));matches=matches.slice(0,12);const attempts=[];for(const raw of matches){const match=verify(raw),started=Date.now(),form=await fetchFlashscoreForm(match).catch(()=>null),a=analyzeMatch(match,form),available=(a.picks||[]).filter(p=>p.available);attempts.push({match:`${match.home} - ${match.away}`,form:form?'flashscore':'market-only',picks:available.length,ms:Date.now()-started});if(available.length)return res.status(200).json({ok:true,match:{id:match.id,home:match.home,away:match.away,league:match.league,date:dateTR(match.startTimestamp)},formMode:form?'flashscore':'market-only',analysis:{availablePicks:available.length,picks:available.map(p=>({label:p.label,market:p.market,selection:p.selection,odds:p.odds,av:p.av,confidence:p.confidencePct,reason:p.reason})),title:a.scenario?.title,summary:a.scenario?.summary},attempts})}return res.status(200).json({ok:false,error:'Eşleşen maçlarda seçim üretilemedi',attempts,totalMatches:matches.length})}catch(e){console.error('[selftest]',e);return res.status(500).json({ok:false,error:e.message||String(e)})}};
