@@ -1,41 +1,8 @@
-const { analyzeMatch } = require('../lib/analyzer-final');
+const { analyzeMatch } = require('../lib/analyzer-quality');
 const { fetchFootballForm } = require('../lib/form');
 const { fetchFlashscoreForm, fetchFlashscoreTennisForm } = require('../lib/flashscore');
-
 const RESULT_DEPENDENT_SPECIALS=new Set([214,215,442,444,588,589,590,591,592,705]);
 function withTimeout(promise,ms){return Promise.race([promise,new Promise(resolve=>setTimeout(()=>resolve(null),ms))])}
 function analysisMatch(match){if(Number(match?.sportType)!==1)return match;return{...match,markets:(match.markets||[]).filter(m=>!RESULT_DEPENDENT_SPECIALS.has(Number(m?.typeId)))}}
 function emergencyAnalysis(match,message){return{radar:0,form:null,formStatus:'fallback',scenario:{title:'Analiz üretilemedi',summary:'Nesine oranları görünmeye devam ediyor; analiz motoru bu istekte sonuç üretemedi.',formText:'',confidence:0,specialComment:'',specialOdds:null},picks:[],insights:[{title:'⚠️ Teknik not',text:message||'Analiz servisi yanıt vermedi.'}],analyzedAt:new Date().toISOString(),degraded:true,disclaimer:'Teknik hata halinde sahte seçim üretilmez.'}}
-module.exports=async function handler(req,res){
-  if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
-  res.setHeader('Cache-Control','no-store, max-age=0');
-  try{
-    const original=typeof req.body==='string'?JSON.parse(req.body):req.body;
-    if(!original||!original.id||!Array.isArray(original.markets))return res.status(400).json({error:'Geçersiz maç verisi'});
-    const match=analysisMatch(original),sport=Number(match.sportType);
-    let form=null,sourceMode='market-only';
-    if(sport===1){
-      let flash=null,espn=null;
-      [flash,espn]=await Promise.all([
-        withTimeout(fetchFlashscoreForm(match),16000).catch(e=>{console.warn('[flashscore-promise]',match.id,e?.message||e);return null}),
-        match.home&&match.away?withTimeout(fetchFootballForm(match.home,match.away),7000).catch(()=>null):Promise.resolve(null)
-      ]);
-      form=flash||espn;sourceMode=flash?'flashscore-direct':espn?'espn-fallback':'market-only-football';
-    }else if(sport===5){
-      form=await withTimeout(fetchFlashscoreTennisForm(match),14000).catch(e=>{console.warn('[flashscore-tennis-promise]',match.id,e?.message||e);return null});
-      sourceMode=form?'flashscore-tennis':'market-only';
-    }
-    try{
-      const result=analyzeMatch(match,form);
-      result.fullMarketCount=original.marketCount||original.markets.length;
-      result.analysisMarketCount=match.markets.length;
-      result.researchMode=Boolean(form&&String(form.source||'').toLowerCase().includes('flashscore'));
-      result.formStatus=result.formStatus||sourceMode;
-      if(sport===1&&!form)result.researchWarning='Son maç formu eşleşmedi; seçimler boş bırakılmadı ve düşük güvenle yalnızca doğrulanmış Nesine fiyat dağılımından üretildi.';
-      if(sport===5&&!form)result.researchWarning='Flashscore tenis formu bu istekte alınamadı; seçimler doğrulanmış Nesine piyasa dağılımından üretildi.';
-      if(form?.eventId)result.flashscore={verified:true,eventId:form.eventId,url:form.flashscoreUrl,stats:form.flashStats||{}};
-      console.log('[analyze-ok]',match.id,sourceMode,'picks',(result.picks||[]).filter(p=>p.available).length,'necOzel',result.picks?.find(p=>p.label==='NEÇ Özel')?.selection||'none');
-      return res.status(200).json(result);
-    }catch(e){console.error('[analyzer]',match.id,e);return res.status(200).json(emergencyAnalysis(original,e?.message||'NEÇ analiz motoru çalıştırılamadı'))}
-  }catch(e){console.error('[analyze-request]',e);return res.status(200).json(emergencyAnalysis(req.body||{},e?.message||'Analiz isteği işlenemedi'))}
-};
+module.exports=async function handler(req,res){if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});res.setHeader('Cache-Control','no-store, max-age=0');try{const original=typeof req.body==='string'?JSON.parse(req.body):req.body;if(!original||!original.id||!Array.isArray(original.markets))return res.status(400).json({error:'Geçersiz maç verisi'});const match=analysisMatch(original),sport=Number(match.sportType);let form=null,sourceMode='market-only';if(sport===1){let flash=null,espn=null;[flash,espn]=await Promise.all([withTimeout(fetchFlashscoreForm(match),16000).catch(e=>{console.warn('[flashscore-promise]',match.id,e?.message||e);return null}),match.home&&match.away?withTimeout(fetchFootballForm(match.home,match.away),7000).catch(()=>null):Promise.resolve(null)]);form=flash||espn;sourceMode=flash?'flashscore-direct':espn?'espn-fallback':'market-only-football'}else if(sport===5){form=await withTimeout(fetchFlashscoreTennisForm(match),14000).catch(e=>{console.warn('[flashscore-tennis-promise]',match.id,e?.message||e);return null});sourceMode=form?'flashscore-tennis':'market-only'}try{const result=analyzeMatch(match,form);result.fullMarketCount=original.marketCount||original.markets.length;result.analysisMarketCount=match.markets.length;result.researchMode=Boolean(form&&String(form.source||'').toLowerCase().includes('flashscore'));result.formStatus=result.formStatus||sourceMode;if(sport===1&&!form)result.researchWarning='Son maç formu eşleşmedi; seçimler boş bırakılmadı ve düşük güvenle yalnızca doğrulanmış Nesine fiyat dağılımından üretildi.';if(sport===5&&!form)result.researchWarning='Flashscore tenis formu bu istekte alınamadı; seçimler doğrulanmış Nesine piyasa dağılımından üretildi.';if(form?.eventId)result.flashscore={verified:true,eventId:form.eventId,url:form.flashscoreUrl,stats:form.flashStats||{}};console.log('[analyze-ok]',match.id,sourceMode,'picks',(result.picks||[]).filter(p=>p.available).length,'necOzel',result.picks?.find(p=>p.label==='NEÇ Özel')?.selection||'none');return res.status(200).json(result)}catch(e){console.error('[analyzer]',match.id,e);return res.status(200).json(emergencyAnalysis(original,e?.message||'NEÇ analiz motoru çalıştırılamadı'))}}catch(e){console.error('[analyze-request]',e);return res.status(200).json(emergencyAnalysis(req.body||{},e?.message||'Analiz isteği işlenemedi'))}};
