@@ -1,4 +1,4 @@
-const { analyzeMatch } = require('../lib/analyzer-v6');
+const { analyzeMatch } = require('../lib/analyzer-coherent');
 const { fetchFlashscoreForm, fetchFlashscoreTennisForm } = require('../lib/flashscore');
 const RESULT_DEPENDENT_SPECIALS=new Set([214,215,442,444,588,589,590,591,592,705]);
 function withTimeout(promise,ms){return Promise.race([promise,new Promise(resolve=>setTimeout(()=>resolve(null),ms))])}
