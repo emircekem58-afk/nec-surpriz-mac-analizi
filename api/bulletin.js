@@ -1,6 +1,7 @@
 const { fetchBulletin } = require('../lib/nesine');
 
 const CORE_FOOTBALL_FALLBACK=new Set([1,3,5,11,12,13,14,38,43,49,100,101]);
+const CORE_TENNIS_FALLBACK=new Set([182]);
 function istanbulDate(ts){if(!ts)return null;return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Istanbul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(ts))}
 function markMarketLabels(matches){
   for(const match of matches||[]){
@@ -8,9 +9,10 @@ function markMarketLabels(matches){
       const mtid=Number(market?.typeId||0);
       for(const outcome of market.outcomes||[]){
         const fromNesine=Boolean(outcome?.sourceLabel);
-        const coreFallback=Number(match?.sportType)===1&&CORE_FOOTBALL_FALLBACK.has(mtid);
-        outcome.labelVerified=fromNesine||coreFallback;
-        outcome.labelSource=fromNesine?'nesine-source':(coreFallback?'core-fallback':'unverified-fallback');
+        const footballFallback=Number(match?.sportType)===1&&CORE_FOOTBALL_FALLBACK.has(mtid);
+        const tennisFallback=Number(match?.sportType)===5&&CORE_TENNIS_FALLBACK.has(mtid);
+        outcome.labelVerified=fromNesine||footballFallback||tennisFallback;
+        outcome.labelSource=fromNesine?'nesine-source':footballFallback?'football-core-fallback':tennisFallback?'tennis-core-fallback':'unverified-fallback';
         if(!outcome.labelVerified){
           outcome.rawFallbackLabel=outcome.label;
           outcome.label=`Nesine seçeneği #${Number(outcome.n||0)||'?'}`;
