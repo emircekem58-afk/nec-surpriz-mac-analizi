@@ -1,4 +1,4 @@
-const { analyzeMatch } = require('../lib/analyzer-v3');
+const { analyzeMatch } = require('../lib/analyzer-v5');
 const { fetchFootballForm } = require('../lib/form');
 const { fetchFlashscoreForm, fetchFlashscoreTennisForm } = require('../lib/flashscore');
 
@@ -34,7 +34,7 @@ module.exports=async function handler(req,res){
       if(sport===1&&!form)result.researchWarning='Son maç formu eşleşmedi; seçimler boş bırakılmadı ve düşük güvenle yalnızca doğrulanmış Nesine fiyat dağılımından üretildi.';
       if(sport===5&&!form)result.researchWarning='Flashscore tenis formu bu istekte alınamadı; seçimler doğrulanmış Nesine piyasa dağılımından üretildi.';
       if(form?.eventId)result.flashscore={verified:true,eventId:form.eventId,url:form.flashscoreUrl,stats:form.flashStats||{}};
-      console.log('[analyze-ok]',match.id,sourceMode,'picks',(result.picks||[]).filter(p=>p.available).length);
+      console.log('[analyze-ok]',match.id,sourceMode,'picks',(result.picks||[]).filter(p=>p.available).length,'necOzel',result.picks?.find(p=>p.label==='NEÇ Özel')?.selection||'none');
       return res.status(200).json(result);
     }catch(e){console.error('[analyzer]',match.id,e);return res.status(200).json(emergencyAnalysis(original,e?.message||'NEÇ analiz motoru çalıştırılamadı'))}
   }catch(e){console.error('[analyze-request]',e);return res.status(200).json(emergencyAnalysis(req.body||{},e?.message||'Analiz isteği işlenemedi'))}
