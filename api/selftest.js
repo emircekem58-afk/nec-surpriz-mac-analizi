@@ -1,6 +1,6 @@
 const { fetchBulletin }=require('../lib/nesine');
 const { fetchFlashscoreForm }=require('../lib/flashscore');
-const { analyzeMatch }=require('../lib/analyzer-coherent');
+const { analyzeMatch }=require('../lib/analyzer-sanity');
 const CORE=new Set([1,3,5,11,12,13,14,38,43,49,100,101]);
 function dateTR(ts){if(!ts)return null;return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Istanbul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(ts))}
 function verify(match){const markets=[];for(const m of match.markets||[]){const outcomes=[];for(const o of m.outcomes||[]){o.labelVerified=Boolean(o.sourceLabel)||(Number(match.sportType)===1&&CORE.has(Number(m.typeId)));if(o.labelVerified&&Number(o.odds)>1)outcomes.push(o)}if(outcomes.length){m.outcomes=outcomes;markets.push(m)}}match.markets=markets;return match}
