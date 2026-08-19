@@ -48,8 +48,9 @@ module.exports=async function handler(req,res){
     const match=analysisMatch(original);
     if(Number(match.sportType)!==1){const r=analyzeMatch(match,null);return res.status(200).json(r)}
     let form=null,research=null,formError=null;
-    const formPromise=(match.home&&match.away)?withTimeout(fetchFootballForm(match.home,match.away),6000).catch(e=>{formError=e?.message||'Form verisi alınamadı';return null}):Promise.resolve(null);
-    const researchPromise=withTimeout(fetchWebResearch(match),30500).catch(()=>null);
+    const formPromise=(match.home&&match.away)?withTimeout(fetchFootballForm(match.home,match.away),7000).catch(e=>{formError=e?.message||'Form verisi alınamadı';return null}):Promise.resolve(null);
+    const runtimeOidc=req.headers?.['x-vercel-oidc-token']||null;
+    const researchPromise=withTimeout(fetchWebResearch(match,runtimeOidc),41000).catch(e=>{console.warn('[research-promise]',match.id,e?.message||e);return null});
     [form,research]=await Promise.all([formPromise,researchPromise]);
     if(research){
       const result=researchAnalysis(match,research,form);
@@ -60,7 +61,7 @@ module.exports=async function handler(req,res){
     }
     try{
       const fallback=analyzeMatch(match,form);
-      fallback.formStatus=form?'ok':'fallback';fallback.researchWarning='Flashscore-first web araştırması bu istekte yeterli doğrulamaya ulaşamadı; yalnızca takım form modeli kullanıldı.';
+      fallback.formStatus=form?'ok':'fallback';fallback.researchWarning='Flashscore-first araştırması bu istekte tamamlanamadı. Nesine oranları yine eksiksiz gösterilir; NEÇ seçimleri yalnızca doğrulanabilen takım formu varsa üretilir.';
       fallback.fullMarketCount=original.marketCount||original.markets.length;fallback.analysisMarketCount=match.markets.length;
       return res.status(200).json(fallback);
     }catch(e){return res.status(200).json(emergencyAnalysis(original,e?.message||'Analiz tamamlanamadı'))}
