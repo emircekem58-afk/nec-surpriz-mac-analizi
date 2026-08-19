@@ -1,4 +1,4 @@
-const { analyzeFootball } = require('../lib/analyzer-football-opinion');
+const { analyzeFootball } = require('../lib/analyzer-football');
 const { analyzeTennis } = require('../lib/analyzer-tennis');
 const { fetchFlashscoreForm, fetchFlashscoreTennisForm } = require('../lib/flashscore');
 const RESULT_DEPENDENT_SPECIALS=new Set([214,215,442,444,588,589,590,591,592,705]);
