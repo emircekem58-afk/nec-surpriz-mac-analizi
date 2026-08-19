@@ -5,23 +5,25 @@ const CORE_TENNIS_FALLBACK=new Set([182]);
 function istanbulDate(ts){if(!ts)return null;return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Istanbul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(ts))}
 function markMarketLabels(matches){
   for(const match of matches||[]){
+    let hidden=0;
+    const cleanMarkets=[];
     for(const market of match.markets||[]){
-      const mtid=Number(market?.typeId||0);
+      const mtid=Number(market?.typeId||0),cleanOutcomes=[];
       for(const outcome of market.outcomes||[]){
         const fromNesine=Boolean(outcome?.sourceLabel);
         const footballFallback=Number(match?.sportType)===1&&CORE_FOOTBALL_FALLBACK.has(mtid);
         const tennisFallback=Number(match?.sportType)===5&&CORE_TENNIS_FALLBACK.has(mtid);
         outcome.labelVerified=fromNesine||footballFallback||tennisFallback;
         outcome.labelSource=fromNesine?'nesine-source':footballFallback?'football-core-fallback':tennisFallback?'tennis-core-fallback':'unverified-fallback';
-        if(!outcome.labelVerified){
-          outcome.rawFallbackLabel=outcome.label;
-          outcome.label=`Nesine seçeneği #${Number(outcome.n||0)||'?'}`;
-        }
+        if(outcome.labelVerified)cleanOutcomes.push(outcome);else hidden++;
       }
+      if(cleanOutcomes.length){market.outcomes=cleanOutcomes;cleanMarkets.push(market)}
     }
-    match.marketCount=(match.markets||[]).length;
-    match.outcomeCount=(match.markets||[]).reduce((n,m)=>n+(m.outcomes?.length||0),0);
-    match.verifiedOutcomeCount=(match.markets||[]).reduce((n,m)=>n+(m.outcomes||[]).filter(o=>o.labelVerified).length,0);
+    match.markets=cleanMarkets;
+    match.marketCount=cleanMarkets.length;
+    match.outcomeCount=cleanMarkets.reduce((n,m)=>n+(m.outcomes?.length||0),0);
+    match.verifiedOutcomeCount=match.outcomeCount;
+    match.hiddenUnverifiedOutcomeCount=hidden;
   }
   return matches;
 }
