@@ -1,4 +1,4 @@
-const { analyzeMatch } = require('../lib/analyzer');
+const { analyzeMatch } = require('../lib/analyzer-v2');
 const { fetchFootballForm } = require('../lib/form');
 const { fetchFlashscoreForm, fetchFlashscoreTennisForm } = require('../lib/flashscore');
 
@@ -20,7 +20,7 @@ module.exports=async function handler(req,res){
         withTimeout(fetchFlashscoreForm(match),16000).catch(e=>{console.warn('[flashscore-promise]',match.id,e?.message||e);return null}),
         match.home&&match.away?withTimeout(fetchFootballForm(match.home,match.away),7000).catch(()=>null):Promise.resolve(null)
       ]);
-      form=flash||espn;sourceMode=flash?'flashscore-direct':espn?'espn-fallback':'no-form';
+      form=flash||espn;sourceMode=flash?'flashscore-direct':espn?'espn-fallback':'market-only-football';
     }else if(sport===5){
       form=await withTimeout(fetchFlashscoreTennisForm(match),14000).catch(e=>{console.warn('[flashscore-tennis-promise]',match.id,e?.message||e);return null});
       sourceMode=form?'flashscore-tennis':'market-only';
@@ -30,9 +30,9 @@ module.exports=async function handler(req,res){
       result.fullMarketCount=original.marketCount||original.markets.length;
       result.analysisMarketCount=match.markets.length;
       result.researchMode=Boolean(form&&String(form.source||'').toLowerCase().includes('flashscore'));
-      result.formStatus=sourceMode;
-      if(sport===1&&!form)result.researchWarning='Flashscore ve ESPN formu bu istekte alınamadı; futbol seçimleri bu nedenle üretilemedi.';
-      if(sport===5&&!form)result.researchWarning='Flashscore tenis formu bu istekte alınamadı; beş seçim Nesine piyasa dağılımından üretildi.';
+      result.formStatus=result.formStatus||sourceMode;
+      if(sport===1&&!form)result.researchWarning='Son maç formu eşleşmedi; seçimler boş bırakılmadı ve düşük güvenle yalnızca doğrulanmış Nesine fiyat dağılımından üretildi.';
+      if(sport===5&&!form)result.researchWarning='Flashscore tenis formu bu istekte alınamadı; seçimler doğrulanmış Nesine piyasa dağılımından üretildi.';
       if(form?.eventId)result.flashscore={verified:true,eventId:form.eventId,url:form.flashscoreUrl,stats:form.flashStats||{}};
       console.log('[analyze-ok]',match.id,sourceMode,'picks',(result.picks||[]).filter(p=>p.available).length);
       return res.status(200).json(result);
