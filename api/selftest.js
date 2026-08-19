@@ -1,6 +1,6 @@
 const { fetchBulletin }=require('../lib/nesine');
 const { fetchFlashscoreForm,fetchFlashscoreTennisForm }=require('../lib/flashscore');
-const { analyzeFootball }=require('../lib/analyzer-football-opinion');
+const { analyzeFootball }=require('../lib/analyzer-football');
 const { analyzeTennis }=require('../lib/analyzer-tennis');
 const CORE_FOOTBALL=new Set([1,3,5,11,12,13,14,38,43,49,100,101]);
 const CORE_TENNIS=new Set([182]);
