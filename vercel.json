@@ -10,5 +10,8 @@
         {"key": "Cache-Control", "value": "no-store, max-age=0"}
       ]
     }
+  ],
+  "crons": [
+    {"path":"/api/morning","schedule":"0 6 * * *"}
   ]
 }
