@@ -1,6 +1,9 @@
 {
   "name": "nec-surpriz-mac-analizi",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "private": true,
-  "engines": {"node": ">=20"}
+  "engines": {"node": ">=20"},
+  "dependencies": {
+    "@vercel/functions": "3.9.3"
+  }
 }
