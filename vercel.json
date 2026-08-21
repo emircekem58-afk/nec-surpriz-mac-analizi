@@ -3,6 +3,9 @@
   "functions": {
     "api/*.js": { "maxDuration": 60 }
   },
+  "rewrites": [
+    { "source": "/", "destination": "/v7.html" }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",
