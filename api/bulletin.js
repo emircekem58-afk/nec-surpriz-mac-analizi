@@ -1,6 +1,6 @@
 const { fetchBulletin } = require('../lib/nesine');
 
-const CORE_FOOTBALL_FALLBACK=new Set([1,3,5,11,12,13,14,38,43,49,100,101]);
+const CORE_FOOTBALL_FALLBACK=new Set([1,3,5,11,12,13,14,38,43,49,100,101,798]);
 const CORE_TENNIS_FALLBACK=new Set([182,183,187,189]);
 function istanbulDate(ts){if(!ts)return null;return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Istanbul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(ts))}
 function markMarketLabels(matches){
