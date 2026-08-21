@@ -1,4 +1,4 @@
-const { analyzeFootball } = require('../lib/analyzer-football');
+const { analyzeFootball } = require('../lib/analyzer-football-clean');
 const { analyzeTennis } = require('../lib/analyzer-tennis-v2');
 const { fetchFlashscoreForm, fetchFlashscoreTennisForm } = require('../lib/flashscore');
 const { cohereAnalysis } = require('../lib/coherence');
