@@ -1,3 +1,4 @@
-const store=require('../lib/daily-store');
-const {generateDailyCoupons,dateTR}=require('../lib/coupon-engine');
-module.exports=async function handler(req,res){const secret=process.env.CRON_SECRET,auth=req.headers.authorization;if(!secret||auth!==`Bearer ${secret}`)return res.status(secret?401:503).json({ok:false,error:secret?'Unauthorized':'CRON_SECRET is not configured'});try{const date=dateTR(),snap=await generateDailyCoupons(date);await store.set(`coupons:${date}:v1`,snap,9*24*3600);console.log('[morning-snapshot]',date,snap.candidateCount);return res.status(200).json({ok:true,date,generatedAt:snap.generatedAt})}catch(e){console.error('[morning]',e);return res.status(500).json({ok:false,error:e.message||String(e)})}};
+module.exports = async function handler(req, res) {
+  req.query = { ...(req.query || {}), route: 'morning' };
+  return require('./v7')(req, res);
+};
